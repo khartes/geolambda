@@ -8,6 +8,7 @@ RUN \
     yum makecache fast; \
     yum install -y wget libpng-devel nasm rsync; \
     yum install -y bash-completion --enablerepo=epel; \
+    yum install -y libpqxx-devel; \
     yum clean all; \
     yum autoremove
 
@@ -187,11 +188,25 @@ RUN \
     make -j ${NPROC} install; \
     cd ${BUILD}; rm -rf geotiff
 
+# Open SSL is needed for building Python so it's included here for ease
+RUN \
+    mkdir openssl; \
+    wget -qO- https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz \
+        | tar xvz -C openssl --strip-components=1; cd openssl; \
+    ./config shared --prefix=${PREFIX}/openssl --openssldir=${PREFIX}/openssl; \
+    make depend; make install; cd ..; rm -rf openssl
+
+# postgresql    
+RUN git clone git://git.postgresql.org/git/postgresql.git;\
+    cd postgresql/;\
+    ./configure --with-openssl --prefix=${PREFIX}; \
+    make -j ${NPROC}; make -j ${NPROC} install;
+
 # GDAL
 RUN \
     mkdir gdal; \
     wget -qO- http://download.osgeo.org/gdal/$GDAL_VERSION/gdal-$GDAL_VERSION.tar.gz \
-        | tar xvz -C gdal --strip-components=1; cd gdal; \
+        | tar xz -C gdal --strip-components=1; cd gdal; \
     ./configure \
         --disable-debug \
         --disable-static \
@@ -205,6 +220,7 @@ RUN \
         --with-zstd=${PREFIX} \
         --with-jpeg=${PREFIX} \
         --with-threads=yes \
+        --with-pg=yes\
         --with-sqlite3=$PREFIX \
         --with-curl=${PREFIX}/bin/curl-config \
         --without-python \
@@ -217,16 +233,9 @@ RUN \
     make -j ${NPROC} install; \
     cd ${BUILD}; rm -rf gdal
 
-# Open SSL is needed for building Python so it's included here for ease
-RUN \
-    mkdir openssl; \
-    wget -qO- https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz \
-        | tar xvz -C openssl --strip-components=1; cd openssl; \
-    ./config shared --prefix=${PREFIX}/openssl --openssldir=${PREFIX}/openssl; \
-    make depend; make install; cd ..; rm -rf openssl
-
 
 # Copy shell scripts and config files over
 COPY bin/* /usr/local/bin/
 
 WORKDIR /home/geolambda
+
